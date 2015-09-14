@@ -6,6 +6,17 @@ INFLUX_HOST="localhost"
 INFLUX_API_PORT="8086"
 API_URL="http://${INFLUX_HOST}:${INFLUX_API_PORT}"
 
+# Configures clustering
+if [ -n "${NODENAME}" ]; then
+    echo "Clustering : ${NODENAME}"
+    sed -i "s/.*hostname.*/hostname = \"${NODENAME}\"/" ${CONFIG_FILE}
+    # Binding port for other node; default to 8088
+    if [ -n "${PORT}" ]; then
+        echo "Port : ${PORT}"
+        sed -i "s/.*bind-address.*/bind-address = \":${PORT}\"/" ${CONFIG_FILE}
+    fi
+fi
+
 # Dynamically change the value of 'max-open-shards' to what 'ulimit -n' returns
 sed -i "s/^max-open-shards.*/max-open-shards = $(ulimit -n)/" ${CONFIG_FILE}
 
@@ -91,7 +102,13 @@ fi
 echo "influxdb configuration: "
 cat ${CONFIG_FILE}
 echo "=> Starting InfluxDB ..."
-exec /opt/influxdb/influxd -config=${CONFIG_FILE} &
+# Joining other existing Influx cluster
+if [ -n "${JOIN}" ]; then
+    echo "Joining opts : ${JOIN}"
+    exec /opt/influxdb/influxd -config=${CONFIG_FILE} -join=${JOIN} &
+else
+    exec /opt/influxdb/influxd -config=${CONFIG_FILE} &
+fi
 
 # Pre create database on the initiation of the container
 if [ -n "${PRE_CREATE_DB}" ]; then
